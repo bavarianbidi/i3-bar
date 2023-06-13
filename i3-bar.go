@@ -192,7 +192,7 @@ func main() {
 			return outputs.Pango(
 				pango.Icon("material-today").Alpha(0.6),
 				now.Format("Mon Jan 2"),
-			).OnClick(click.RunLeft("gsimplecal"))
+			)
 		})
 
 	localtime := clock.Local().
