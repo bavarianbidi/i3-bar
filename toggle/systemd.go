@@ -30,6 +30,7 @@ func NewSystemdUserService(serviceName string) *SystemdModule {
 }
 
 func (m *SystemdModule) toggleSystemdUserService() string {
+	//nolint:gosec
 	out, _ := exec.Command("systemctl", "--user", "is-active", m.serviceName).Output()
 	return strings.TrimSpace(string(out))
 }
@@ -51,6 +52,7 @@ func (m *SystemdModule) outputSystemdUserService(serviceState string) *bar.Segme
 }
 
 func (m *SystemdModule) clickSystemdUserService() {
+	//nolint:gosec
 	out, _ := exec.Command("systemctl", "--user", "is-active", m.serviceName).Output()
 	var toggleCmd string
 
@@ -62,6 +64,7 @@ func (m *SystemdModule) clickSystemdUserService() {
 	default:
 		toggleCmd = "restart"
 	}
+	//nolint:gosec
 	_, _ = exec.Command("systemctl", "--user", toggleCmd, m.serviceName).CombinedOutput()
 
 	m.refresh()

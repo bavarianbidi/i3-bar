@@ -17,6 +17,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -166,10 +167,22 @@ func threshold(out *bar.Segment, urgent bool, color ...bool) *bar.Segment {
 }
 
 func main() {
-	material.Load(home("go/src/github.com/google/material-design-icons"))
-	mdi.Load(home("go/src/github.com/Templarian/MaterialDesign-Webfont"))
-	typicons.Load(home("go/src/github.com/stephenhutchings/typicons.font"))
-	fontawesome.Load(home("go/src/github.com/FortAwesome/Font-Awesome"))
+	err := material.Load(home("go/src/github.com/google/material-design-icons"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = mdi.Load(home("go/src/github.com/Templarian/MaterialDesign-Webfont"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = typicons.Load(home("go/src/github.com/stephenhutchings/typicons.font"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = fontawesome.Load(home("go/src/github.com/FortAwesome/Font-Awesome"))
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	colors.LoadBarConfig()
 	bg := colors.Scheme("background")
