@@ -16,12 +16,7 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
@@ -40,20 +35,17 @@ import (
 	"barista.run/modules/cputemp"
 	"barista.run/modules/diskio"
 	"barista.run/modules/diskspace"
-	"barista.run/modules/gsuite/calendar"
 	"barista.run/modules/media"
 	"barista.run/modules/meminfo"
 	"barista.run/modules/meta/split"
 	"barista.run/modules/netinfo"
 	"barista.run/modules/netspeed"
 	"barista.run/modules/sysinfo"
+	"barista.run/modules/vpn"
 
 	"barista.run/modules/volume"
 	"barista.run/modules/volume/alsa" // libasound2-dev or libsdl2-dev
-	"barista.run/modules/weather"
-	"barista.run/modules/weather/openweathermap"
 	"barista.run/modules/wlan"
-	"barista.run/oauth"
 	"barista.run/outputs"
 	"barista.run/pango"
 	"barista.run/pango/icons/fontawesome"
@@ -63,7 +55,6 @@ import (
 
 	colorful "github.com/lucasb-eyer/go-colorful"
 	"github.com/martinlindhe/unit"
-	keyring "github.com/zalando/go-keyring"
 )
 
 var spacer = pango.Text(" ").XXSmall()
@@ -101,7 +92,7 @@ func formatMediaTime(d time.Duration) string {
 }
 
 func makeMediaIconAndPosition(m media.Info) *pango.Node {
-	iconAndPosition := pango.Icon("fa-music").Color(colors.Hex("#f70"))
+	iconAndPosition := pango.Icon("mdi-music-circle").Color(colors.Hex("#f70"))
 	if m.PlaybackStatus == media.Playing {
 		iconAndPosition.Append(spacer,
 			pango.Textf("%s/", formatMediaTime(m.Position())))
@@ -157,93 +148,9 @@ func deviceForMountPath(path string) string {
 	return ""
 }
 
-type freegeoipResponse struct {
-	Lat float64 `json:"latitude"`
-	Lng float64 `json:"longitude"`
-}
-
-func whereami() (lat float64, lng float64, err error) {
-	resp, err := http.Get("https://freegeoip.app/json/")
-	if err != nil {
-		return 0, 0, err
-	}
-	var res freegeoipResponse
-	err = json.NewDecoder(resp.Body).Decode(&res)
-	if err != nil {
-		return 0, 0, err
-	}
-	return res.Lat, res.Lng, nil
-}
-
-type autoWeatherProvider struct{}
-
-func (a autoWeatherProvider) GetWeather() (weather.Weather, error) {
-	lat, lng, err := whereami()
-	if err != nil {
-		return weather.Weather{}, err
-	}
-	return openweathermap.
-		New("%%OWM_API_KEY%%").
-		Coords(lat, lng).
-		GetWeather()
-}
-
-func calendarNotifyHandler(e calendar.Event) func(bar.Event) {
-	notifyBody := e.Start.Format("15:04")
-	if !e.End.Equal(e.Start) {
-		notifyBody += " - " + e.End.Format("15:04")
-	}
-	if e.Location != "" {
-		notifyBody += "\n" + e.Location
-	}
-	return click.RunLeft("notify-send", e.Summary, notifyBody)
-}
-
-func setupOauthEncryption() error {
-	const service = "barista-sample-bar"
-	var username string
-	if u, err := user.Current(); err == nil {
-		username = u.Username
-	} else {
-		username = fmt.Sprintf("user-%d", os.Getuid())
-	}
-	var secretBytes []byte
-	// IMPORTANT: The oauth tokens used by some modules are very sensitive, so
-	// we encrypt them with a random key and store that random key using
-	// libsecret (gnome-keyring or equivalent). If no secret provider is
-	// available, there is no way to store tokens (since the version of
-	// sample-bar used for setup-oauth will have a different key from the one
-	// running in i3bar). See also https://github.com/zalando/go-keyring#linux.
-	secret, err := keyring.Get(service, username)
-	if err == nil {
-		secretBytes, err = base64.RawURLEncoding.DecodeString(secret)
-	}
-	if err != nil {
-		secretBytes = make([]byte, 64)
-		_, err := rand.Read(secretBytes)
-		if err != nil {
-			return err
-		}
-		secret = base64.RawURLEncoding.EncodeToString(secretBytes)
-		keyring.Set(service, username, secret)
-	}
-	oauth.SetEncryptionKey(secretBytes)
-	return nil
-}
-
 func makeIconOutput(key string) *bar.Segment {
 	return outputs.Pango(spacer, pango.Icon(key), spacer)
 }
-
-var gsuiteOauthConfig = []byte(`{"installed": {
-	"client_id":"%%GOOGLE_CLIENT_ID%%",
-	"project_id":"i3-barista",
-	"auth_uri":"https://accounts.google.com/o/oauth2/auth",
-	"token_uri":"https://www.googleapis.com/oauth2/v3/token",
-	"auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs",
-	"client_secret":"%%GOOGLE_CLIENT_SECRET%%",
-	"redirect_uris":["urn:ietf:wg:oauth:2.0:oob","http://localhost"]
-}}`)
 
 func threshold(out *bar.Segment, urgent bool, color ...bool) *bar.Segment {
 	if urgent {
@@ -277,10 +184,6 @@ func main() {
 		colors.Set("good", colorful.Hcl(120, 1.0, v).Clamped())
 	}
 
-	if err := setupOauthEncryption(); err != nil {
-		panic(fmt.Sprintf("Could not setup oauth token encryption: %v", err))
-	}
-
 	localdate := clock.Local().
 		Output(time.Second, func(now time.Time) bar.Output {
 			return outputs.Pango(
@@ -307,73 +210,15 @@ func main() {
 		})
 	}
 
-	// Weather information comes from OpenWeatherMap.
-	// https://openweathermap.org/api.
-	wthr := weather.New(autoWeatherProvider{}).Output(func(w weather.Weather) bar.Output {
-		iconName := ""
-		switch w.Condition {
-		case weather.Thunderstorm,
-			weather.TropicalStorm,
-			weather.Hurricane:
-			iconName = "stormy"
-		case weather.Drizzle,
-			weather.Hail:
-			iconName = "shower"
-		case weather.Rain:
-			iconName = "downpour"
-		case weather.Snow,
-			weather.Sleet:
-			iconName = "snow"
-		case weather.Mist,
-			weather.Smoke,
-			weather.Whirls,
-			weather.Haze,
-			weather.Fog:
-			iconName = "windy-cloudy"
-		case weather.Clear:
-			if !w.Sunset.IsZero() && time.Now().After(w.Sunset) {
-				iconName = "night"
-			} else if !w.Sunrise.IsZero() && time.Now().Before(w.Sunrise) {
-				iconName = "night"
-			} else {
-				iconName = "sunny"
-			}
-		case weather.PartlyCloudy:
-			iconName = "partly-sunny"
-		case weather.Cloudy, weather.Overcast:
-			iconName = "cloudy"
-		case weather.Tornado,
-			weather.Windy:
-			iconName = "windy"
+	vpn := vpn.New("tun0").Output(func(s vpn.State) bar.Output {
+		if s.Connected() {
+			return pango.Icon("mdi-lan-connect").Color(colors.Hex("#34eb55")).Append(spacer, pango.Textf("VPN Connected"))
 		}
-		if iconName == "" {
-			iconName = "warning-outline"
-		} else {
-			iconName = "weather-" + iconName
+		if s.Disconnected() {
+			return pango.Icon("mdi-lan-disconnect").Color(colors.Hex("#eb4034")).Append(spacer, pango.Textf("VPN Disconnected"))
 		}
-		mainModalController.SetOutput("weather", makeIconOutput("typecn-"+iconName))
-		out := outputs.Group()
-		out.Append(outputs.Pango(
-			pango.Icon("typecn-"+iconName), spacer,
-			pango.Textf("%.1f℃", w.Temperature.Celsius()),
-		))
-		out.Append(outputs.Text(w.Description))
-		out.Append(outputs.Pango(
-			pango.Icon("mdi-flag-variant-outline").Alpha(0.8), spacer,
-			pango.Textf("%0.fmph %s", w.Wind.Speed.MilesPerHour(), w.Wind.Direction.Cardinal()),
-		))
-		out.Append(outputs.Pango(
-			pango.Icon("fa-tint").Alpha(0.6).Small(), spacer,
-			pango.Textf("%0.f%%", w.Humidity*100),
-		))
-		out.Append(outputs.Pango(
-			pango.Icon("mdi-weather-sunset-up").Alpha(0.8), spacer,
-			w.Sunrise.Format("15:04"), spacer,
-			pango.Icon("mdi-weather-sunset-down").Alpha(0.8), spacer,
-			w.Sunset.Format("15:04"),
-		))
-		out.Append(pango.Textf("provided by %s", w.Attribution).XSmall())
-		return out
+		return outputs.Text("VPN should not been here")
+
 	})
 
 	battSummary, battDetail := split.New(battery.All().Output(func(i battery.Info) bar.Output {
@@ -611,29 +456,6 @@ func main() {
 
 	mediaSummary, mediaDetail := split.New(media.Auto().Output(mediaFormatFunc), 1)
 
-	/*
-		ghNotify := github.New("%%GITHUB_CLIENT_ID%%", "%%GITHUB_CLIENT_SECRET%%").
-			Output(func(n github.Notifications) bar.Output {
-				if n.Total() == 0 {
-					return nil
-				}
-				out := outputs.Group(
-					pango.Icon("fab-github").
-						Concat(spacer).
-						ConcatTextf("%d", n.Total()))
-				mentions := n["mention"] + n["team_mention"]
-				if mentions > 0 {
-					out.Append(spacer)
-					out.Append(outputs.Pango(
-						pango.Icon("mdi-bell").
-							ConcatTextf("%d", mentions)).
-						Urgent(true))
-				}
-				return out.Glue().OnClick(
-					click.RunLeft("xdg-open", "https://github.com/notifications"))
-			})
-	*/
-
 	mainModal := modal.New()
 	sysMode := mainModal.Mode("sysinfo").
 		SetOutput(makeIconOutput("ion-analytics")).
@@ -645,29 +467,28 @@ func main() {
 		sysMode.Detail(homeDiskspace)
 	}
 	sysMode.Detail(rootDiskspace, mainDiskio)
+
 	mainModal.Mode("network").
 		SetOutput(makeIconOutput("mdi-ethernet")).
 		Summary(wifiName).
 		Detail(wifiDetails, net, netsp)
+
 	mainModal.Mode("media").
 		SetOutput(makeIconOutput("mdi-music-box")).
-		//Add(mediaSummary).
-		Add(vol, mediaSummary).
-		Detail(mediaDetail)
-	/*
-		mainModal.Mode("notifications").
-			SetOutput(nil).
-			Add(gm, cal, ghNotify)
-	*/
+		Add(vol, mediaSummary, mediaDetail)
+
+	mainModal.Mode("VPN").
+		SetOutput(makeIconOutput("mdi-tunnel-outline")).
+		Summary().
+		Detail().
+		Add(vpn)
+
 	mainModal.Mode("battery").
 		// Filled in by the battery module if one is available.
 		SetOutput(nil).
 		Summary(battSummary).
 		Detail(battDetail)
-	mainModal.Mode("weather").
-		// Set to current conditions by the weather module.
-		SetOutput(makeIconOutput("typecn-warning-outline")).
-		Detail(wthr)
+
 	mainModal.Mode("timezones").
 		SetOutput(makeIconOutput("material-access-time")).
 		Detail(makeTzClock("Seattle", "America/Los_Angeles")).
