@@ -50,9 +50,7 @@ import (
 	"barista.run/outputs"
 	"barista.run/pango"
 	"barista.run/pango/icons/fontawesome"
-	"barista.run/pango/icons/material"
 	"barista.run/pango/icons/mdi"
-	"barista.run/pango/icons/typicons"
 
 	colorful "github.com/lucasb-eyer/go-colorful"
 	"github.com/martinlindhe/unit"
@@ -167,15 +165,7 @@ func threshold(out *bar.Segment, urgent bool, color ...bool) *bar.Segment {
 }
 
 func main() {
-	err := material.Load(home("go/src/github.com/google/material-design-icons"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = mdi.Load(home("go/src/github.com/Templarian/MaterialDesign-Webfont"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = typicons.Load(home("go/src/github.com/stephenhutchings/typicons.font"))
+	err := mdi.Load(home("go/src/github.com/Templarian/MaterialDesign-Webfont"))
 	if err != nil {
 		log.Fatal(err)
 	}
