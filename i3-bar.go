@@ -562,5 +562,6 @@ func main() {
 
 	var mm bar.Module
 	mm, mainModalController = mainModal.Build()
+	barista.SuppressSignals(true)
 	panic(barista.Run(mm, localtime))
 }
