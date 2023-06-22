@@ -49,7 +49,6 @@ import (
 	"barista.run/modules/wlan"
 	"barista.run/outputs"
 	"barista.run/pango"
-	"barista.run/pango/icons/fontawesome"
 	"barista.run/pango/icons/mdi"
 
 	"github.com/bavarianbidi/i3-bar/shelly"
@@ -167,10 +166,6 @@ func threshold(out *bar.Segment, urgent bool, color ...bool) *bar.Segment {
 
 func main() {
 	err := mdi.Load(home("go/src/github.com/Templarian/MaterialDesign-Webfont"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = fontawesome.Load(home("go/src/github.com/FortAwesome/Font-Awesome"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -312,18 +307,18 @@ func main() {
 	vol := volume.New(alsa.DefaultMixer()).Output(func(v volume.Volume) bar.Output {
 		if v.Mute {
 			return outputs.
-				Pango(pango.Icon("fa-volume-mute").Alpha(0.8), spacer, "MUT").
+				Pango(pango.Icon("mdi-volume-mute").Alpha(0.8), spacer, "MUT").
 				Color(colors.Scheme("degraded"))
 		}
 		iconName := "off"
 		pct := v.Pct()
 		if pct > 66 {
-			iconName = "up"
+			iconName = "high"
 		} else if pct > 33 {
-			iconName = "down"
+			iconName = "low"
 		}
 		return outputs.Pango(
-			pango.Icon("fa-volume-"+iconName).Alpha(0.6),
+			pango.Icon("mdi-volume-"+iconName).Alpha(0.6),
 			spacer,
 			pango.Textf("%2d%%", pct),
 		)
@@ -414,9 +409,9 @@ func main() {
 		RefreshInterval(2 * time.Second).
 		Output(func(s netspeed.Speeds) bar.Output {
 			return outputs.Pango(
-				pango.Icon("fa-upload").Alpha(0.5), spacer, pango.Textf("%7s", format.Byterate(s.Tx)),
+				pango.Icon("mdi-upload-network").Alpha(0.5), spacer, pango.Textf("%7s", format.Byterate(s.Tx)),
 				pango.Text(" ").Small(),
-				pango.Icon("fa-download").Alpha(0.5), spacer, pango.Textf("%7s", format.Byterate(s.Rx)),
+				pango.Icon("mdi-download-network").Alpha(0.5), spacer, pango.Textf("%7s", format.Byterate(s.Rx)),
 			)
 		})
 
@@ -448,7 +443,7 @@ func main() {
 		})
 	}
 	rootDiskspace := diskspace.New("/").Output(func(i diskspace.Info) bar.Output {
-		return formatDiskSpace(i, "fa-hdd")
+		return formatDiskSpace(i, "mdi-harddisk")
 	})
 
 	mainDiskio := diskio.New(strings.TrimPrefix(rootDev, "/dev/")).
@@ -462,7 +457,7 @@ func main() {
 
 	mainModal := modal.New()
 	sysMode := mainModal.Mode("sysinfo").
-		SetOutput(makeIconOutput("ion-analytics")).
+		SetOutput(makeIconOutput("mdi-poll")).
 		Add(loadAvg).
 		Detail(loadAvgDetail, uptime).
 		Add(freeMem).

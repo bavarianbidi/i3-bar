@@ -86,9 +86,8 @@ type Shelly1ToggleResponse struct {
 }
 
 const (
-	shelly1address string = "192.168.178.64"
-	shelly1toggle  string = "/relay/0?turn=toggle"
-	shelly1status  string = "/status"
+	shelly1toggle string = "/relay/0?turn=toggle"
+	shelly1status string = "/status"
 )
 
 type ShellyState struct {
