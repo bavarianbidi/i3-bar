@@ -473,49 +473,61 @@ func main() {
 
 			out := outputs.Group()
 
-			if s.Connected() {
+			if s.Reachable() {
+				if s.Connected() {
+					out.Append(
+						outputs.Pango(
+							pango.Icon("mdi-coffee").Color(colors.Hex("#34eb55")),
+						))
+				}
+				if !s.Connected() {
+					out.Append(
+						outputs.Pango(
+							pango.Icon("mdi-coffee-outline").Color(colors.Hex("#eb4034")),
+						))
+				}
+
+				out.OnClick(click.Left(func() {
+					s.Toggle()
+				}))
+
+				if s.IsUpdateAvailable() {
+					out.Append(outputs.Pango(
+						pango.Icon("mdi-package-down").Color(colors.Hex("#34eb55")),
+						spacer,
+						pango.Textf("version %s available", s.GetVersion()),
+					))
+				}
+				if !s.IsUpdateAvailable() {
+					out.Append(outputs.Pango(
+						pango.Icon("mdi-package-down"),
+						spacer,
+						pango.Textf("up to date"),
+					))
+				}
+
+				out.Append(outputs.Pango(
+					pango.Icon("mdi-harddisk"),
+					spacer,
+					pango.Textf("%.0f%% used", s.DiskUtilization()),
+				))
+
+				out.Append(outputs.Pango(
+					pango.Icon("mdi-memory"),
+					spacer,
+					pango.Textf("%.0f%% RAM usage", s.MemoryUtilization()),
+				))
+			} else {
 				out.Append(
 					outputs.Pango(
-						pango.Icon("mdi-coffee").Color(colors.Hex("#34eb55")),
+						pango.Icon("mdi-coffee-off").Color(colors.Hex("#eb4034")),
 					))
-			}
-			if !s.Connected() {
-				out.Append(
-					outputs.Pango(
-						pango.Icon("mdi-coffee-outline").Color(colors.Hex("#eb4034")),
-					))
-			}
 
-			out.OnClick(click.Left(func() {
-				s.Toggle()
-			}))
-
-			if s.IsUpdateAvailable() {
 				out.Append(outputs.Pango(
-					pango.Icon("mdi-package-down").Color(colors.Hex("#34eb55")),
 					spacer,
-					pango.Textf("version %s available", s.GetVersion()),
+					pango.Textf("shelly not reachable"),
 				))
 			}
-			if !s.IsUpdateAvailable() {
-				out.Append(outputs.Pango(
-					pango.Icon("mdi-package-down"),
-					spacer,
-					pango.Textf("up to date"),
-				))
-			}
-
-			out.Append(outputs.Pango(
-				pango.Icon("mdi-harddisk"),
-				spacer,
-				pango.Textf("%.0f%% used", s.DiskUtilization()),
-			))
-
-			out.Append(outputs.Pango(
-				pango.Icon("mdi-memory"),
-				spacer,
-				pango.Textf("%.0f%% RAM usage", s.MemoryUtilization()),
-			))
 
 			return out
 		}), 1)

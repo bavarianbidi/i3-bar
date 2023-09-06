@@ -2,6 +2,7 @@ package shelly
 
 import (
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -91,6 +92,7 @@ const (
 )
 
 type ShellyState struct {
+	reachable       bool
 	IsOn            bool
 	Address         string
 	UpdateAvailable bool
@@ -99,6 +101,10 @@ type ShellyState struct {
 	RamFree         int
 	FsSize          int
 	FsFree          int
+}
+
+func (s ShellyState) Reachable() bool {
+	return s.reachable
 }
 
 func (s ShellyState) Connected() bool {
@@ -190,19 +196,23 @@ func getShellyStatus(address string) ShellyState {
 
 	resp, err := http.Get("http://" + address + shelly1status)
 	if err != nil {
-		shellyState.IsOn = false
+		shellyState.reachable = false
+		return shellyState
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		shellyState.IsOn = false
+		shellyState.reachable = false
+		return shellyState
 	}
 
 	var statusResponse Shelly1Status
 	if err := json.Unmarshal(body, &statusResponse); err != nil {
-		shellyState.IsOn = false
+		shellyState.reachable = false
+		return shellyState
 	}
 	shellyState.IsOn = statusResponse.Relays[0].Ison
+	shellyState.reachable = true
 
 	// stats
 	shellyState.UpdateAvailable = statusResponse.HasUpdate
