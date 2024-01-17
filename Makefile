@@ -1,6 +1,6 @@
 .PHONY: build
 build: ## Build i3-bar
-	go build -o i3-bar i3-bar.go
+	go build -o i3-bar 
 
 .PHONY: imports
 imports: ## Runs goimports.

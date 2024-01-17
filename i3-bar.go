@@ -51,7 +51,6 @@ import (
 	"barista.run/pango"
 	"barista.run/pango/icons/mdi"
 
-	"github.com/bavarianbidi/i3-bar/shelly"
 	colorful "github.com/lucasb-eyer/go-colorful"
 	"github.com/martinlindhe/unit"
 )
@@ -467,70 +466,20 @@ func main() {
 	}
 	sysMode.Detail(rootDiskspace, mainDiskio)
 
-	quickMillSummary, quickMillDetail := split.New(shelly.New("192.168.178.64").
-		//RefreshInterval(3*time.Second).
-		Output(func(s shelly.ShellyState) bar.Output {
+	// headphones
+	headsetSummary, headsetDetail := bluetoothAudio("hci0", "14:3F:A6:1B:FA:77", "headphones")
 
-			out := outputs.Group()
+	// bluetooth box
+	soundcoreSummary, soundcoreDetail := bluetoothAudio("hci0", "08:EB:ED:83:82:01", "speaker")
 
-			if s.Reachable() {
-				if s.Connected() {
-					out.Append(
-						outputs.Pango(
-							pango.Icon("mdi-coffee").Color(colors.Hex("#34eb55")),
-						))
-				}
-				if !s.Connected() {
-					out.Append(
-						outputs.Pango(
-							pango.Icon("mdi-coffee-outline").Color(colors.Hex("#eb4034")),
-						))
-				}
+	mainModal.Mode("bluetooth-audio").
+		SetOutput(makeIconOutput("mdi-bluetooth")).
+		Add(soundcoreSummary).
+		Add(headsetSummary).
+		Detail(soundcoreDetail).
+		Detail(headsetDetail)
 
-				out.OnClick(click.Left(func() {
-					s.Toggle()
-				}))
-
-				if s.IsUpdateAvailable() {
-					out.Append(outputs.Pango(
-						pango.Icon("mdi-package-down").Color(colors.Hex("#34eb55")),
-						spacer,
-						pango.Textf("version %s available", s.GetVersion()),
-					))
-				}
-				if !s.IsUpdateAvailable() {
-					out.Append(outputs.Pango(
-						pango.Icon("mdi-package-down"),
-						spacer,
-						pango.Textf("up to date"),
-					))
-				}
-
-				out.Append(outputs.Pango(
-					pango.Icon("mdi-harddisk"),
-					spacer,
-					pango.Textf("%.0f%% used", s.DiskUtilization()),
-				))
-
-				out.Append(outputs.Pango(
-					pango.Icon("mdi-memory"),
-					spacer,
-					pango.Textf("%.0f%% RAM usage", s.MemoryUtilization()),
-				))
-			} else {
-				out.Append(
-					outputs.Pango(
-						pango.Icon("mdi-coffee-off").Color(colors.Hex("#eb4034")),
-					))
-
-				out.Append(outputs.Pango(
-					spacer,
-					pango.Textf("shelly not reachable"),
-				))
-			}
-
-			return out
-		}), 1)
+	quickMillSummary, quickMillDetail := shellyStatus("192.168.178.64", "coffee")
 
 	mainModal.Mode("shelly").
 		SetOutput(makeIconOutput("mdi-coffee")).
