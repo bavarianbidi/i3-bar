@@ -13,6 +13,8 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/jfreymuth/pulse v0.1.1-0.20221101213618-75628dabd933 // indirect
+	github.com/martinohmann/barista-contrib v0.0.0-20230324194946-e5c115e49dc3 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/vishvananda/netlink v1.1.0 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect

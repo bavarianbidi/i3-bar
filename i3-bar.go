@@ -16,6 +16,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os/exec"
@@ -50,6 +51,8 @@ import (
 	"barista.run/outputs"
 	"barista.run/pango"
 	"barista.run/pango/icons/mdi"
+
+	"github.com/martinohmann/barista-contrib/modules/micamp"
 
 	colorful "github.com/lucasb-eyer/go-colorful"
 	"github.com/martinlindhe/unit"
@@ -478,6 +481,17 @@ func main() {
 		Add(headsetSummary).
 		Detail(soundcoreDetail).
 		Detail(headsetDetail)
+
+	// microphone
+	// TODO:
+	// - support mute on click
+	// - support volume control
+	// - custom colors + custom microphone icon
+	microphone := micamp.New(context.TODO(), "USB PnP Audio Device")
+
+	mainModal.Mode("microphone").
+		SetOutput(makeIconOutput("mdi-microphone")).
+		Add(microphone)
 
 	quickMillSummary, quickMillDetail := shellyStatus("192.168.178.64", "coffee")
 
