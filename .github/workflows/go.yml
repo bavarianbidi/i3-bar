@@ -16,6 +16,8 @@ jobs:
         run: |
           pwd
           echo $HOME
+          echo $RUNNER_HOME
+          ls -ltrah /
       - name: Set up Go 1.19
         uses: actions/setup-go@v1
         with:
