@@ -60,7 +60,16 @@ import (
 )
 
 type config struct {
-	JiraToken string `koanf:"jiraToken"`
+	Jira struct {
+		Token   string `koanf:"token"`
+		OpenURL string `koanf:"openURL"`
+		Icon    string `koanf:"icon"`
+	} `koanf:"jira"`
+	Forges []struct {
+		Host    string `koanf:"host"`
+		OpenURL string `koanf:"openURL"`
+		Icon    string `koanf:"icon"`
+	} `koanf:"forges"`
 }
 
 var spacer = pango.Text(" ").XXSmall()
@@ -232,85 +241,37 @@ func main() {
 		})
 	}
 
-	gitlabNotifications := shell.New("/home/comario/go/bin/forge", "notification", "list", "--host", "git.swf.i.mercedes-benz.com", "--unread", "-o", "json").
-		Output(func(s string) bar.Output {
-			if s == "" {
-				return nil
-			}
+	var forges []bar.Module
+	for _, frg := range cfg.Forges {
+		notification := shell.New(homeDir+"/go/bin/forge", "notification", "list", "--host", frg.Host, "--unread", "-o", "json").
+			Output(func(s string) bar.Output {
+				if s == "" {
+					return nil
+				}
 
-			var parsed []forge.Notification
-			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
-				return outputs.Text(s)
-			}
+				var parsed []forge.Notification
+				if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+					return outputs.Text(s)
+				}
 
-			color := colors.Hex(colorOn)
-			if len(parsed) > 0 {
-				color = colors.Hex(colorOff)
-			}
+				color := colors.Hex(colorOn)
+				if len(parsed) > 0 {
+					color = colors.Hex(colorOff)
+				}
 
-			// return outputs.Text(fmt.Sprintf("%d", len(parsed)))
-			return outputs.Pango(
-				pango.Icon("mdi-gitlab").Alpha(0.6),
-				spacer,
-				pango.Textf("%d", len(parsed)),
-			).Color(color).
-				OnClick(click.Left(func() {
-					_ = exec.Command("xdg-open", "https://git.swf.i.mercedes-benz.com/dashboard/todos").Start()
-				}))
-		}).Every(time.Duration(5) * time.Minute)
+				// return outputs.Text(fmt.Sprintf("%d", len(parsed)))
+				return outputs.Pango(
+					pango.Icon(frg.Icon).Alpha(0.6),
+					spacer,
+					pango.Textf("%d", len(parsed)),
+				).Color(color).
+					OnClick(click.Left(func() {
+						_ = exec.Command("xdg-open", frg.OpenURL).Start()
+					}))
+			}).Every(time.Duration(5) * time.Minute)
 
-	mbGitHubNotifications := shell.New("/home/comario/go/bin/forge", "notification", "list", "--host", "mercedes-benz.ghe.com", "--unread", "-o", "json").
-		Output(func(s string) bar.Output {
-			if s == "" {
-				return nil
-			}
-
-			var parsed []forge.Notification
-			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
-				return outputs.Text(s)
-			}
-
-			color := colors.Hex(colorOn)
-			if len(parsed) > 0 {
-				color = colors.Hex(colorOff)
-			}
-
-			return outputs.Pango(
-				pango.Icon("mdi-github"),
-				spacer,
-				pango.Textf("%d", len(parsed)),
-			).Color(color).
-				OnClick(click.Left(func() {
-					_ = exec.Command("xdg-open", "https://mercedes-benz.ghe.com/notifications").Start()
-				}))
-			// })).Error(fmt.Errorf("failed to parse github notifications %s", title))
-		}).Every(time.Duration(5) * time.Minute)
-
-	gitHubNotifications := shell.New("/home/comario/go/bin/forge", "notification", "list", "--host", "github.com", "--unread", "-o", "json").
-		Output(func(s string) bar.Output {
-			if s == "" {
-				return nil
-			}
-
-			var parsed []forge.Notification
-			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
-				return outputs.Text(s)
-			}
-
-			color := colors.Hex(colorOn)
-			if len(parsed) > 0 {
-				color = colors.Hex(colorOff)
-			}
-
-			return outputs.Pango(
-				pango.Icon("mdi-github").Alpha(0.6),
-				spacer,
-				pango.Textf("%d", len(parsed)),
-			).Color(color).
-				OnClick(click.Left(func() {
-					_ = exec.Command("xdg-open", "https://github.com/notifications").Start()
-				}))
-		}).Every(time.Duration(5) * time.Minute)
+		forges = append(forges, notification)
+	}
 
 	openJiraAlerts := shell.New("/home/comario/bin/jira", "alert", "list", "--since", "5d", "--json").
 		Output(func(s string) bar.Output {
@@ -329,14 +290,14 @@ func main() {
 			}
 
 			return outputs.Pango(
-				pango.Icon("mdi-alert-decagram-outline").Alpha(0.6),
+				pango.Icon(cfg.Jira.Icon).Alpha(0.6),
 				spacer,
 				pango.Textf("%d", len(parsed)),
 			).Color(color).
 				OnClick(click.Left(func() {
-					_ = exec.Command("xdg-open", "https://mercedes-benz.atlassian.net/jira/ops/alerts?view=list&query=%28status%3A%20%22acknowledged%22%20OR%20status%3A%20%22open%22%29%20AND%20responders%3A%2052790135-f8f4-4a2c-aef1-dd46e561f58b-6088&onlyAlerts=true").Start()
+					_ = exec.Command("xdg-open", cfg.Jira.OpenURL).Start()
 				}))
-		}).Every(time.Duration(10) * time.Minute).WithEnv(fmt.Sprint("JIRA_API_TOKEN=" + cfg.JiraToken))
+		}).Every(time.Duration(10) * time.Minute).WithEnv(fmt.Sprint("JIRA_API_TOKEN=" + cfg.Jira.Token))
 
 	zscallerStatus := shell.New("sh", "-c", "ip route show dev zcctun0 || echo __ZSCALER_ERROR__").
 		Output(func(s string) bar.Output {
@@ -542,7 +503,7 @@ func main() {
 
 	mainModal.Mode("gitlab notifications").
 		SetOutput(makeIconOutput("mdi-alert")).
-		Add(gitlabNotifications).Add(mbGitHubNotifications).Add(gitHubNotifications).Add(openJiraAlerts)
+		Add(forges...).Add(openJiraAlerts)
 
 	// TODO:
 	// bavarianbidi: read bluetooth devices from config file instead of hardcoding them here
