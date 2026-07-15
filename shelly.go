@@ -1,12 +1,12 @@
 package main
 
 import (
-	"barista.run/bar"
-	"barista.run/base/click"
-	"barista.run/colors"
-	"barista.run/modules/meta/split"
-	"barista.run/outputs"
-	"barista.run/pango"
+	"github.com/barista-run/barista/bar"
+	"github.com/barista-run/barista/base/click"
+	"github.com/barista-run/barista/colors"
+	"github.com/barista-run/barista/modules/meta/split"
+	"github.com/barista-run/barista/outputs"
+	"github.com/barista-run/barista/pango"
 	"github.com/bavarianbidi/i3-bar/shelly"
 )
 

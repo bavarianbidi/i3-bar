@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"time"
 
-	"barista.run/bar"
-	"barista.run/base/value"
-	l "barista.run/logging"
-	"barista.run/outputs"
-	"barista.run/timing"
+	"github.com/barista-run/barista/bar"
+	"github.com/barista-run/barista/base/value"
+	l "github.com/barista-run/barista/logging"
+	"github.com/barista-run/barista/outputs"
+	"github.com/barista-run/barista/timing"
 )
 
 // endpoint: http://address/status

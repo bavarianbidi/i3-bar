@@ -2,6 +2,17 @@
 build: ## Build i3-bar
 	go build -o i3-bar 
 
+FINELOG ?= mod:shell,mod:netinfo,github.com/bavarianbidi/i3-bar/shelly
+LOGFILE ?= /tmp/i3-bar-debug.log
+
+.PHONY: build-debug
+build-debug: ## Build i3-bar with barista debug logging enabled
+	go build -tags baristadebuglog -o i3-bar .
+
+.PHONY: run-debug
+run-debug: build-debug ## Run i3-bar with finelog; override FINELOG/LOGFILE as needed
+	./i3-bar --finelog="$(FINELOG)" 2>>"$(LOGFILE)"
+
 .PHONY: imports
 imports: ## Runs goimports.
 	@echo "====> $@"

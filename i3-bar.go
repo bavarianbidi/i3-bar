@@ -16,47 +16,52 @@
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"barista.run"
-	"barista.run/bar"
-	"barista.run/base/click"
-	"barista.run/base/watchers/netlink"
-	"barista.run/colors"
-	"barista.run/format"
-	"barista.run/group/modal"
-	"barista.run/modules/battery"
-	"barista.run/modules/clock"
-	"barista.run/modules/cputemp"
-	"barista.run/modules/diskio"
-	"barista.run/modules/diskspace"
-	"barista.run/modules/media"
-	"barista.run/modules/meminfo"
-	"barista.run/modules/meta/split"
-	"barista.run/modules/netinfo"
-	"barista.run/modules/netspeed"
-	"barista.run/modules/sysinfo"
-	"barista.run/modules/vpn"
+	"github.com/barista-run/barista"
+	"github.com/barista-run/barista/bar"
+	"github.com/barista-run/barista/base/click"
+	"github.com/barista-run/barista/base/watchers/netlink"
+	"github.com/barista-run/barista/colors"
+	"github.com/barista-run/barista/format"
+	"github.com/barista-run/barista/group/modal"
+	"github.com/barista-run/barista/modules/battery"
+	"github.com/barista-run/barista/modules/clock"
+	"github.com/barista-run/barista/modules/diskio"
+	"github.com/barista-run/barista/modules/diskspace"
+	"github.com/barista-run/barista/modules/media"
+	"github.com/barista-run/barista/modules/meta/split"
+	"github.com/barista-run/barista/modules/netinfo"
+	"github.com/barista-run/barista/modules/netspeed"
+	"github.com/barista-run/barista/modules/shell"
 
-	"barista.run/modules/volume"
-	"barista.run/modules/volume/alsa" // libasound2-dev or libsdl2-dev
-	"barista.run/modules/wlan"
-	"barista.run/outputs"
-	"barista.run/pango"
-	"barista.run/pango/icons/mdi"
+	"github.com/barista-run/barista/modules/volume"
+	"github.com/barista-run/barista/modules/volume/alsa" // libasound2-dev or libsdl2-dev
+	"github.com/barista-run/barista/modules/wlan"
+	"github.com/barista-run/barista/outputs"
+	"github.com/barista-run/barista/pango"
+	"github.com/barista-run/barista/pango/icons/mdi"
 
-	"github.com/martinohmann/barista-contrib/modules/micamp"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
+
+	forge "github.com/git-pkgs/forge"
 
 	colorful "github.com/lucasb-eyer/go-colorful"
-	"github.com/martinlindhe/unit"
 )
+
+type config struct {
+	JiraToken string `koanf:"jiraToken"`
+}
 
 var spacer = pango.Text(" ").XXSmall()
 var mainModalController modal.Controller
@@ -172,6 +177,22 @@ func main() {
 		log.Fatal(err)
 	}
 
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// read config file
+	k := koanf.New(".")
+	if err := k.Load(file.Provider(homeDir+"/.config/i3/config.yaml"), yaml.Parser()); err != nil {
+		log.Fatalf("error loading config: %v", err)
+	}
+
+	cfg := config{}
+	if err := k.Unmarshal("", &cfg); err != nil {
+		log.Fatalf("error unmarshaling config: %v", err)
+	}
+
 	colors.LoadBarConfig()
 	bg := colors.Scheme("background")
 	fg := colors.Scheme("statusline")
@@ -195,7 +216,7 @@ func main() {
 
 	localtime := clock.Local().
 		Output(time.Second, func(now time.Time) bar.Output {
-			return outputs.Text(now.Format("15:04:05")).
+			return outputs.Text(now.Format("15:04")).
 				OnClick(click.Left(func() {
 					mainModalController.Toggle("timezones")
 				}))
@@ -211,16 +232,135 @@ func main() {
 		})
 	}
 
-	vpn := vpn.New("tun0").Output(func(s vpn.State) bar.Output {
-		if s.Connected() {
-			return pango.Icon("mdi-lan-connect").Color(colors.Hex("#34eb55")).Append(spacer, pango.Textf("VPN Connected"))
-		}
-		if s.Disconnected() {
-			return pango.Icon("mdi-lan-disconnect").Color(colors.Hex("#eb4034")).Append(spacer, pango.Textf("VPN Disconnected"))
-		}
-		return outputs.Text("VPN should not been here")
+	gitlabNotifications := shell.New("/home/comario/go/bin/forge", "notification", "list", "--host", "git.swf.i.mercedes-benz.com", "--unread", "-o", "json").
+		Output(func(s string) bar.Output {
+			if s == "" {
+				return nil
+			}
 
-	})
+			var parsed []forge.Notification
+			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+				return outputs.Text(s)
+			}
+
+			color := colors.Hex(colorOn)
+			if len(parsed) > 0 {
+				color = colors.Hex(colorOff)
+			}
+
+			// return outputs.Text(fmt.Sprintf("%d", len(parsed)))
+			return outputs.Pango(
+				pango.Icon("mdi-gitlab").Alpha(0.6),
+				spacer,
+				pango.Textf("%d", len(parsed)),
+			).Color(color).
+				OnClick(click.Left(func() {
+					_ = exec.Command("xdg-open", "https://git.swf.i.mercedes-benz.com/dashboard/todos").Start()
+				}))
+		}).Every(time.Duration(5) * time.Minute)
+
+	mbGitHubNotifications := shell.New("/home/comario/go/bin/forge", "notification", "list", "--host", "mercedes-benz.ghe.com", "--unread", "-o", "json").
+		Output(func(s string) bar.Output {
+			if s == "" {
+				return nil
+			}
+
+			var parsed []forge.Notification
+			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+				return outputs.Text(s)
+			}
+
+			color := colors.Hex(colorOn)
+			if len(parsed) > 0 {
+				color = colors.Hex(colorOff)
+			}
+
+			return outputs.Pango(
+				pango.Icon("mdi-github"),
+				spacer,
+				pango.Textf("%d", len(parsed)),
+			).Color(color).
+				OnClick(click.Left(func() {
+					_ = exec.Command("xdg-open", "https://mercedes-benz.ghe.com/notifications").Start()
+				}))
+			// })).Error(fmt.Errorf("failed to parse github notifications %s", title))
+		}).Every(time.Duration(5) * time.Minute)
+
+	gitHubNotifications := shell.New("/home/comario/go/bin/forge", "notification", "list", "--host", "github.com", "--unread", "-o", "json").
+		Output(func(s string) bar.Output {
+			if s == "" {
+				return nil
+			}
+
+			var parsed []forge.Notification
+			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+				return outputs.Text(s)
+			}
+
+			color := colors.Hex(colorOn)
+			if len(parsed) > 0 {
+				color = colors.Hex(colorOff)
+			}
+
+			return outputs.Pango(
+				pango.Icon("mdi-github").Alpha(0.6),
+				spacer,
+				pango.Textf("%d", len(parsed)),
+			).Color(color).
+				OnClick(click.Left(func() {
+					_ = exec.Command("xdg-open", "https://github.com/notifications").Start()
+				}))
+		}).Every(time.Duration(5) * time.Minute)
+
+	openJiraAlerts := shell.New("/home/comario/bin/jira", "alert", "list", "--since", "5d", "--json").
+		Output(func(s string) bar.Output {
+			if s == "" {
+				return nil
+			}
+
+			var parsed []map[string]interface{}
+			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+				return outputs.Text(s)
+			}
+
+			color := colors.Hex(colorOn)
+			if len(parsed) > 0 {
+				color = colors.Hex(colorOff)
+			}
+
+			return outputs.Pango(
+				pango.Icon("mdi-alert-decagram-outline").Alpha(0.6),
+				spacer,
+				pango.Textf("%d", len(parsed)),
+			).Color(color).
+				OnClick(click.Left(func() {
+					_ = exec.Command("xdg-open", "https://mercedes-benz.atlassian.net/jira/ops/alerts?view=list&query=%28status%3A%20%22acknowledged%22%20OR%20status%3A%20%22open%22%29%20AND%20responders%3A%2052790135-f8f4-4a2c-aef1-dd46e561f58b-6088&onlyAlerts=true").Start()
+				}))
+		}).Every(time.Duration(10) * time.Minute).WithEnv(fmt.Sprint("JIRA_API_TOKEN=" + cfg.JiraToken))
+
+	zscallerStatus := shell.New("sh", "-c", "ip route show dev zcctun0 || echo __ZSCALER_ERROR__").
+		Output(func(s string) bar.Output {
+			if s == "" {
+				return nil
+			}
+
+			if strings.Contains(s, "__ZSCALER_ERROR__") {
+				return outputs.Pango(
+					pango.Icon("mdi-tunnel-outline").Alpha(0.6),
+				).Color(colors.Hex(colorOff))
+			}
+
+			length := len(strings.Split(s, "\n"))
+
+			color := colors.Hex(colorOn)
+			if length <= 3 {
+				color = colors.Hex(colorOff)
+			}
+
+			return outputs.Pango(
+				pango.Icon("mdi-tunnel-outline").Alpha(0.6),
+			).Color(color)
+		}).Every(time.Duration(2) * time.Minute)
 
 	battSummary, battDetail := split.New(battery.All().Output(func(i battery.Info) bar.Output {
 		if i.Status == battery.Disconnected || i.Status == battery.Unknown {
@@ -326,83 +466,13 @@ func main() {
 		)
 	})
 
-	loadAvg := sysinfo.New().Output(func(s sysinfo.Info) bar.Output {
-		out := outputs.Pango(
-			pango.Icon("mdi-desktop-tower").Alpha(0.6),
-			pango.Textf("%0.2f", s.Loads[0]),
-		)
-		// Load averages are unusually high for a few minutes after boot.
-		if s.Uptime < 10*time.Minute {
-			// so don't add colours until 10 minutes after system start.
-			return out
-		}
-		threshold(out,
-			s.Loads[0] > 128 || s.Loads[2] > 64,
-			s.Loads[0] > 64 || s.Loads[2] > 32,
-			s.Loads[0] > 32 || s.Loads[2] > 16,
-		)
-		out.OnClick(click.Left(func() {
-			mainModalController.Toggle("sysinfo")
-		}))
-		return out
-	})
-
-	loadAvgDetail := sysinfo.New().Output(func(s sysinfo.Info) bar.Output {
-		return pango.Textf("%0.2f %0.2f", s.Loads[1], s.Loads[2]).Smaller()
-	})
-
-	uptime := sysinfo.New().Output(func(s sysinfo.Info) bar.Output {
-		u := s.Uptime
-		var uptimeOut *pango.Node
-		if u.Hours() < 24 {
-			uptimeOut = pango.Textf("%d:%02d",
-				int(u.Hours()), int(u.Minutes())%60)
-		} else {
-			uptimeOut = pango.Textf("%dd%02dh",
-				int(u.Hours()/24), int(u.Hours())%24)
-		}
-		return pango.Icon("mdi-trending-up").Alpha(0.6).Concat(uptimeOut)
-	})
-
-	freeMem := meminfo.New().Output(func(m meminfo.Info) bar.Output {
-		out := outputs.Pango(
-			pango.Icon("material-memory").Alpha(0.8),
-			format.IBytesize(m.Available()),
-		)
-		freeGigs := m.Available().Gigabytes()
-		threshold(out,
-			freeGigs < 0.5,
-			freeGigs < 1,
-			freeGigs < 2,
-			freeGigs > 12)
-		out.OnClick(click.Left(func() {
-			mainModalController.Toggle("sysinfo")
-		}))
-		return out
-	})
-
-	swapMem := meminfo.New().Output(func(m meminfo.Info) bar.Output {
-		return outputs.Pango(
-			pango.Icon("mdi-swap-horizontal").Alpha(0.8),
-			format.IBytesize(m["SwapTotal"]-m["SwapFree"]), spacer,
-			pango.Textf("(% 2.0f%%)", (1-m.FreeFrac("Swap"))*100.0).Small(),
-		)
-	})
-
-	temp := cputemp.New().
-		RefreshInterval(2 * time.Second).
-		Output(func(temp unit.Temperature) bar.Output {
-			out := outputs.Pango(
-				pango.Icon("mdi-fan").Alpha(0.6), spacer,
-				pango.Textf("%2d℃", int(temp.Celsius())),
-			)
-			threshold(out,
-				temp.Celsius() > 90,
-				temp.Celsius() > 70,
-				temp.Celsius() > 60,
-			)
-			return out
-		})
+	// System information modules
+	loadAvg := loadAvg()
+	loadAvgDetail := loadAvgDetail()
+	uptime := uptime()
+	freeMem := freeMem()
+	swapMem := swapInfo()
+	temp := cpuTemp()
 
 	sub := netlink.Any()
 	iface := sub.Get().Name
@@ -455,9 +525,10 @@ func main() {
 				ConcatText(format.IByterate(r.Total()))
 		})
 
-	mediaSummary, mediaDetail := split.New(media.Auto().Output(mediaFormatFunc), 1)
+	mediaSummary, mediaDetail := split.New(media.New("spotify").Output(mediaFormatFunc), 1)
 
 	mainModal := modal.New()
+
 	sysMode := mainModal.Mode("sysinfo").
 		SetOutput(makeIconOutput("mdi-poll")).
 		Add(loadAvg).
@@ -468,6 +539,20 @@ func main() {
 		sysMode.Detail(homeDiskspace)
 	}
 	sysMode.Detail(rootDiskspace, mainDiskio)
+
+	mainModal.Mode("gitlab notifications").
+		SetOutput(makeIconOutput("mdi-alert")).
+		Add(gitlabNotifications).Add(mbGitHubNotifications).Add(gitHubNotifications).Add(openJiraAlerts)
+
+	// TODO:
+	// bavarianbidi: read bluetooth devices from config file instead of hardcoding them here
+	//
+	// e.g.:
+	// bluetooth:
+	// - devide: id
+	//   icon: headphones
+	// - devide: id
+	//   icon: speaker
 
 	// headphones
 	headsetSummary, headsetDetail := bluetoothAudio("hci0", "14:3F:A6:1B:FA:77", "headphones")
@@ -482,23 +567,18 @@ func main() {
 		Detail(soundcoreDetail).
 		Detail(headsetDetail)
 
-	// microphone
-	// TODO:
-	// - support mute on click
-	// - support volume control
-	// - custom colors + custom microphone icon
-	microphone := micamp.New(context.TODO(), "USB PnP Audio Device")
-
-	mainModal.Mode("microphone").
-		SetOutput(makeIconOutput("mdi-microphone")).
-		Add(microphone)
-
 	quickMillSummary, quickMillDetail := shellyStatus("192.168.178.64", "coffee")
 
 	mainModal.Mode("shelly").
 		SetOutput(makeIconOutput("mdi-coffee")).
 		Add(quickMillSummary).
 		Detail(quickMillDetail)
+
+	mainModal.Mode("VPN").
+		SetOutput(makeIconOutput("mdi-tunnel-outline")).
+		// Summary().
+		// Detail().
+		Add(zscallerStatus)
 
 	mainModal.Mode("network").
 		SetOutput(makeIconOutput("mdi-ethernet")).
@@ -508,12 +588,6 @@ func main() {
 	mainModal.Mode("media").
 		SetOutput(makeIconOutput("mdi-music-box")).
 		Add(vol, mediaSummary, mediaDetail)
-
-	mainModal.Mode("VPN").
-		SetOutput(makeIconOutput("mdi-tunnel-outline")).
-		Summary().
-		Detail().
-		Add(vpn)
 
 	mainModal.Mode("battery").
 		// Filled in by the battery module if one is available.
@@ -527,11 +601,10 @@ func main() {
 		Detail(makeTzClock("New York", "America/New_York")).
 		Detail(makeTzClock("UTC", "Etc/UTC")).
 		Detail(makeTzClock("Berlin", "Europe/Berlin")).
-		//Detail(makeTzClock("Bangalore", "India/Karnataka")).
-		Add(localdate)
+		Detail(makeTzClock("Bangalore", "Asia/Kolkata"))
 
 	var mm bar.Module
 	mm, mainModalController = mainModal.Build()
 	barista.SuppressSignals(true)
-	panic(barista.Run(mm, localtime))
+	panic(barista.Run(mm, localdate, localtime))
 }
